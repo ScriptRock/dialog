@@ -8,7 +8,9 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"regexp"
 	"strconv"
+	"strings"
 
 	"golang.org/x/crypto/ssh/terminal"
 )
@@ -249,6 +251,76 @@ func (m *InputBox) Run(crumbs string) (Dialog, error) {
 		}
 	}
 	*m.Value = k
+	return m.NextSibling, nil
+}
+
+type CheckListBox struct {
+	Common
+	Text        func() string
+	Items       []CheckListItem
+	Validate    func(string) (string, bool)
+	NextSibling Dialog
+}
+
+type CheckListItem struct {
+	Name  string
+	Value *bool
+}
+
+func (m *CheckListBox) itemArgs() []string {
+	ret := []string{}
+	for i, item := range m.Items {
+		// tag
+		ret = append(ret, strconv.Itoa(i))
+		// item
+		ret = append(ret, item.Name)
+		// status
+		if *item.Value {
+			ret = append(ret, "on")
+		} else {
+			ret = append(ret, "off")
+		}
+	}
+	return ret
+}
+
+func (m *CheckListBox) Run(crumbs string) (Dialog, error) {
+	for _, item := range m.Items {
+		if item.Value == nil {
+			return nil, fmt.Errorf("checklistbox has no result ptr")
+		}
+	}
+	if m.Text == nil {
+		return nil, fmt.Errorf("checklistbox has no text func")
+	}
+	args := m.Common.runArgs()
+	args = append(args,
+		"--checklist", crumbs+"\\n"+m.Text(),
+		strconv.Itoa(m.height()),
+		strconv.Itoa(m.width()),
+		strconv.Itoa(len(m.Items)))
+	args = append(args, m.itemArgs()...)
+	k, err := run(args)
+	if err != nil {
+		return nil, err
+	} else if m.Validate != nil {
+		_, ok := m.Validate(k)
+		if !ok {
+			// TODO FIXME: flash error, return new sibling
+		}
+	}
+
+	// parse returned values
+	setIndices := map[int]bool{}
+	for _, v := range regexp.MustCompile("\\s+").Split(strings.TrimSpace(k), -1) {
+		if vi, err := strconv.Atoi(v); err == nil && vi >= 0 && vi < len(m.Items) {
+			setIndices[vi] = true
+		}
+	}
+	for i, item := range m.Items {
+		*item.Value = setIndices[i]
+	}
+
 	return m.NextSibling, nil
 }
 
