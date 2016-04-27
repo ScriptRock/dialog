@@ -223,14 +223,18 @@ func (m *Menu) Run(crumbs string) (Dialog, error) {
 type InputBox struct {
 	Common
 	Text        func() string
-	Value       *string
+	GetValue    func() string
+	SetValue    func(string)
 	Validate    func(string) (string, bool)
 	NextSibling Dialog
 }
 
 func (m *InputBox) Run(crumbs string) (Dialog, error) {
-	if m.Value == nil {
-		return nil, fmt.Errorf("inputbox has no result ptr")
+	if m.GetValue == nil {
+		return nil, fmt.Errorf("inputbox has no GetValue func")
+	}
+	if m.SetValue == nil {
+		return nil, fmt.Errorf("inputbox has no SetValue func")
 	}
 	if m.Text == nil {
 		return nil, fmt.Errorf("inputbox has no text func")
@@ -240,7 +244,7 @@ func (m *InputBox) Run(crumbs string) (Dialog, error) {
 		"--inputbox", crumbs+"\\n"+m.Text(),
 		strconv.Itoa(m.height()),
 		strconv.Itoa(m.width()),
-		*m.Value)
+		m.GetValue())
 	k, err := run(args)
 	if err != nil {
 		return nil, err
@@ -250,7 +254,7 @@ func (m *InputBox) Run(crumbs string) (Dialog, error) {
 			// TODO FIXME: flash error, return new sibling
 		}
 	}
-	*m.Value = k
+	m.SetValue(k)
 	return m.NextSibling, nil
 }
 
