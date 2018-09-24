@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"os/exec"
 	"regexp"
@@ -255,6 +256,57 @@ func (m *InputBox) Run(crumbs string) (Dialog, error) {
 		}
 	}
 	m.SetValue(k)
+	return m.NextSibling, nil
+}
+
+type EditBox struct {
+	Common
+	Text        func() string
+	GetValue    func() string
+	SetValue    func(string)
+	Validate    func(string) (string, bool)
+	NextSibling Dialog
+}
+
+func (m *EditBox) Run(crumbs string) (Dialog, error) {
+	if m.GetValue == nil {
+		return nil, fmt.Errorf("editbox has no GetValue func")
+	}
+	if m.SetValue == nil {
+		return nil, fmt.Errorf("editbox has no SetValue func")
+	}
+	if m.Text == nil {
+		return nil, fmt.Errorf("editbox has no text func")
+	}
+	// need to write data into a temporary file, edit, read contents out
+	tmpfile, err := ioutil.TempFile("", "editbox")
+	if err != nil {
+		return nil, fmt.Errorf("editbox error creating temporary file: %v", err)
+	}
+	defer os.Remove(tmpfile.Name())
+	if _, err := tmpfile.Write([]byte(m.GetValue())); err != nil {
+		return nil, fmt.Errorf("editbox error writing to temporary file: %v", err)
+	}
+	if err := tmpfile.Close(); err != nil {
+		return nil, fmt.Errorf("editbox error closing temporary file: %v", err)
+	}
+
+	args := m.Common.runArgs()
+	args = append(args,
+		"--editbox", tmpfile.Name(),
+		strconv.Itoa(m.height()),
+		strconv.Itoa(m.width()))
+	data, err := run(args)
+	if err != nil {
+		return nil, err
+	}
+	if m.Validate != nil {
+		_, ok := m.Validate(data)
+		if !ok {
+			// TODO FIXME: flash error, return new sibling
+		}
+	}
+	m.SetValue(data)
 	return m.NextSibling, nil
 }
 
